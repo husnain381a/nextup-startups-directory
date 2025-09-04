@@ -1,52 +1,53 @@
 import NextAuth from "next-auth"
 import GitHub from "next-auth/providers/github"
 import { client } from "./sanity/lib/client"
-import { writeClient } from "./sanity/lib/write-client";
-import { AUTHOR_BY_GITHUB_ID_QUERY } from "./sanity/lib/queries";
- 
+import { writeClient } from "./sanity/lib/write-client"
+import { AUTHOR_BY_GITHUB_ID_QUERY } from "./sanity/lib/queries"
+
 export const { handlers, auth, signIn, signOut } = NextAuth({
   providers: [GitHub],
   callbacks: {
-    async signIn({
-      user: { name, email, image },
-      profile: { id, login, bio },
-    }) {
+    async signIn({ user: { name, email, image }, profile }) {
+      if (!profile?.id) return false
+
+      const githubId = `github-${profile.id}`
+
       const existingUser = await client
         .withConfig({ useCdn: false })
-        .fetch(AUTHOR_BY_GITHUB_ID_QUERY, {
-          id,
-        });
+        .fetch(AUTHOR_BY_GITHUB_ID_QUERY, { id: githubId })
 
       if (!existingUser) {
         await writeClient.create({
           _type: "author",
-          id,
+          _id: githubId,
           name,
-          username: login,
+          username: profile.login,
           email,
           image,
-          bio: bio || "",
-        });
+          bio: profile.bio || "",
+        })
       }
 
-      return true;
+      return true
     },
+
     async jwt({ token, account, profile }) {
       if (account && profile) {
+        const githubId = `github-${profile.id}`
         const user = await client
           .withConfig({ useCdn: false })
-          .fetch(AUTHOR_BY_GITHUB_ID_QUERY, {
-            id: profile?.id,
-          });
+          .fetch(AUTHOR_BY_GITHUB_ID_QUERY, { id: githubId })
 
-        token.id = user?._id;
+        token.id = user?._id
       }
-
-      return token;
+      return token
     },
+
     async session({ session, token }) {
-      Object.assign(session, { id: token.id });
-      return session;
+      return {
+        ...session,
+        id: token.id,
+      }
     },
   },
-});
+})
